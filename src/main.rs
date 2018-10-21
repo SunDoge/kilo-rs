@@ -11,6 +11,9 @@ const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 struct Config {
     cx: u16,
     cy: u16,
+    rx: u16,
+    rowoff: u16,
+    coloff: u16,
     screencols: u16,
     screenrows: u16,
     rows: Vec<String>,
@@ -23,6 +26,9 @@ impl Config {
         Config {
             cx: 0,
             cy: 0,
+            rx: 0,
+            rowoff: 0,
+            coloff: 0,
             screencols: w,
             screenrows: h,
             rows: Vec::new(),
@@ -68,7 +74,8 @@ impl Editor {
         self.draw_rows();
         self.buffer.push_str(&format!(
             "{}{}",
-            cursor::Goto(self.config.cy + 1, self.config.cx + 1),
+            // cursor::Goto(self.config.cy + 1, self.config.cx + 1),
+            cursor::Goto::default(),
             cursor::Show
         ));
         write!(self.stdout, "{}", self.buffer);
@@ -110,7 +117,9 @@ impl Editor {
 
     fn draw_rows(&mut self) {
         for y in 0..self.config.screenrows {
-            if y as usize > self.config.rows.len() {
+            let filerow = y + self.config.rowoff;
+
+            if filerow as usize >= self.config.rows.len() {
                 if self.config.rows.len() == 0 && y == self.config.screenrows / 3 {
                     let welcome = format!("Kilo editor -- version {}", VERSION);
 
@@ -133,7 +142,7 @@ impl Editor {
                     self.buffer.push('~');
                 }
             } else {
-
+                let _len = self.config.rows[filerow as usize].len() - self.config.coloff as usize;
             }
 
             self.buffer.push_str(&format!("{}", clear::UntilNewline));
