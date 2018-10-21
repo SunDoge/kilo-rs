@@ -1,8 +1,8 @@
 use std::env;
 use std::fs::File;
-use std::io::{self, BufRead, Stdin, Stdout, Write};
+use std::io::{self, BufRead, Read, Write};
 use termion::event::Key;
-use termion::input::{Keys, TermRead};
+use termion::input::{Keys, MouseTerminal, TermRead};
 use termion::raw::{IntoRawMode, RawTerminal};
 use termion::{clear, cursor, terminal_size};
 
@@ -36,28 +36,14 @@ impl Config {
     }
 }
 
-struct Editor {
-    stdin: Keys<Stdin>,
-    stdout: RawTerminal<Stdout>,
+struct Editor<R, W> {
+    stdin: R,
+    stdout: W,
     config: Config,
     buffer: String,
 }
 
-impl Editor {
-    pub fn new() -> Editor {
-        let stdin = io::stdin();
-        let stdout = io::stdout()
-            .into_raw_mode()
-            .expect("unable to enable raw mode");
-
-        Editor {
-            stdin: stdin.keys(),
-            stdout: stdout,
-            config: Config::new(),
-            buffer: String::new(),
-        }
-    }
-
+impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
     pub fn open(&mut self, filename: &str) -> io::Result<()> {
         let f = File::open(filename)?;
 
@@ -71,14 +57,16 @@ impl Editor {
     pub fn refresh_screen(&mut self) {
         self.buffer
             .push_str(&format!("{}{}", cursor::Hide, cursor::Goto::default()));
+        // self.buffer
+        //     .push_str(&format!("{}", cursor::Goto::default()));
         self.draw_rows();
         self.buffer.push_str(&format!(
             "{}{}",
-            // cursor::Goto(self.config.cy + 1, self.config.cx + 1),
-            cursor::Goto::default(),
+            cursor::Goto(self.config.cx + 1, self.config.cy + 1),
             cursor::Show
         ));
         write!(self.stdout, "{}", self.buffer);
+        self.stdout.flush().unwrap();
         self.buffer.clear();
     }
 
@@ -110,7 +98,7 @@ impl Editor {
     }
 }
 
-impl Editor {
+impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
     fn read_key(&mut self) -> Result<Key, io::Error> {
         self.stdin.next().unwrap()
     }
@@ -170,7 +158,7 @@ impl Editor {
                 }
             }
             Key::Down => {
-                if self.config.cy != self.config.screenrows {
+                if self.config.cy != self.config.screenrows - 1 {
                     self.config.cy += 1;
                 }
             }
@@ -180,7 +168,15 @@ impl Editor {
 }
 
 fn main() {
-    let mut editor = Editor::new();
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+
+    let mut editor = Editor {
+        stdin: stdin.keys(),
+        stdout: MouseTerminal::from(stdout.into_raw_mode().unwrap()),
+        config: Config::new(),
+        buffer: String::new(),
+    };
 
     let args: Vec<String> = env::args().collect();
 
