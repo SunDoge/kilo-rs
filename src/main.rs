@@ -64,7 +64,7 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
         let f = File::open(filename)?;
 
         for line in io::BufReader::new(f).lines() {
-            self.config.rows.push(Row::new(line?));
+            self.append_row(line?);
         }
 
         Ok(())
@@ -73,12 +73,13 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
     pub fn refresh_screen(&mut self) {
         self.buffer
             .push_str(&format!("{}{}", cursor::Hide, cursor::Goto::default()));
-        // self.buffer
-        //     .push_str(&format!("{}", cursor::Goto::default()));
         self.draw_rows();
         self.buffer.push_str(&format!(
             "{}{}",
-            cursor::Goto(self.config.cx + 1, self.config.cy + 1),
+            cursor::Goto(
+                self.config.cx - self.config.coloff + 1,
+                self.config.cy - self.config.rowoff + 1
+            ),
             cursor::Show
         ));
         write!(self.stdout, "{}", self.buffer);
@@ -146,16 +147,26 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
                     self.buffer.push('~');
                 }
             } else {
-                // let mut len =
-                //     // self.config.rows[filerow as usize].len() - self.config.coloff as usize;
-                // if (len < 0) {
+                // let mut len = self.config.rows[filerow as usize].chars.len() as isize
+                //     - self.config.coloff as isize;
+                // if len < 0 {
                 //     len = 0;
                 // }
 
-                // if (len > self.config.screencols as usize) {
-                //     len = self.config.screencols as usize;
+                // if len > self.config.screencols as isize {
+                //     len = self.config.screencols as isize;
                 // }
-                // self.buffer.push_str(string: &str)
+
+                // let coloff = self.config.coloff as usize;
+                // self.buffer.push_str(
+                //     std::str::from_utf8(
+                //         &self.config.rows[filerow as usize].render.as_bytes()
+                //             [coloff..coloff + len as usize],
+                //     )
+                //     .unwrap(),
+                // )
+                self.buffer
+                    .push_str(&self.config.rows[filerow as usize].render)
             }
 
             self.buffer.push_str(&format!("{}", clear::UntilNewline));
@@ -203,16 +214,22 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
     }
 
     fn update_row(&mut self) {
-        let mut tabs = 0;
         let row = self.config.rows.last_mut().unwrap();
 
-        for c in &row.chars {
-            if c == &'\t' {
-                tabs += 1;
+        row.render.clear();
+
+        for &c in &row.chars {
+            if c == '\t' {
+                row.render.push_str(&" ".repeat(KILO_TAB_STOP as usize));
+            } else {
+                row.render.push(c);
             }
         }
+    }
 
-        row.render.clear();
+    fn append_row(&mut self, s: String) {
+        self.config.rows.push(Row::new(s));
+        self.update_row();
     }
 }
 
