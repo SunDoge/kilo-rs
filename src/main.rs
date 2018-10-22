@@ -4,9 +4,25 @@ use std::io::{self, BufRead, Read, Write};
 use termion::event::Key;
 use termion::input::{Keys, MouseTerminal, TermRead};
 use termion::raw::{IntoRawMode, RawTerminal};
+use termion::screen::AlternateScreen;
 use termion::{clear, cursor, terminal_size};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const KILO_TAB_STOP: u16 = 8;
+
+struct Row {
+    chars: Vec<char>,
+    render: String,
+}
+
+impl Row {
+    pub fn new(line: String) -> Row {
+        Row {
+            chars: line.chars().collect(),
+            render: String::new(),
+        }
+    }
+}
 
 struct Config {
     cx: u16,
@@ -16,7 +32,7 @@ struct Config {
     coloff: u16,
     screencols: u16,
     screenrows: u16,
-    rows: Vec<String>,
+    rows: Vec<Row>,
 }
 
 impl Config {
@@ -48,7 +64,7 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
         let f = File::open(filename)?;
 
         for line in io::BufReader::new(f).lines() {
-            self.config.rows.push(line?);
+            self.config.rows.push(Row::new(line?));
         }
 
         Ok(())
@@ -130,7 +146,16 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
                     self.buffer.push('~');
                 }
             } else {
-                let _len = self.config.rows[filerow as usize].len() - self.config.coloff as usize;
+                // let mut len =
+                //     // self.config.rows[filerow as usize].len() - self.config.coloff as usize;
+                // if (len < 0) {
+                //     len = 0;
+                // }
+
+                // if (len > self.config.screencols as usize) {
+                //     len = self.config.screencols as usize;
+                // }
+                // self.buffer.push_str(string: &str)
             }
 
             self.buffer.push_str(&format!("{}", clear::UntilNewline));
@@ -165,6 +190,30 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
             _ => {}
         }
     }
+
+    fn row_cx_to_rx(&self) -> u16 {
+        let mut rx = 0;
+        for j in 0..self.config.cx {
+            if self.config.rows[self.config.cy as usize].chars[j as usize] == '\t' {
+                rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
+            }
+            rx += 1;
+        }
+        rx
+    }
+
+    fn update_row(&mut self) {
+        let mut tabs = 0;
+        let row = self.config.rows.last_mut().unwrap();
+
+        for c in &row.chars {
+            if c == &'\t' {
+                tabs += 1;
+            }
+        }
+
+        row.render.clear();
+    }
 }
 
 fn main() {
@@ -173,7 +222,7 @@ fn main() {
 
     let mut editor = Editor {
         stdin: stdin.keys(),
-        stdout: MouseTerminal::from(stdout.into_raw_mode().unwrap()),
+        stdout: MouseTerminal::from(AlternateScreen::from(stdout.into_raw_mode().unwrap())),
         config: Config::new(),
         buffer: String::new(),
     };
