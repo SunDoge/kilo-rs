@@ -7,3 +7,8 @@ Rust port of [kilo-tutorial](https://github.com/snaptoken/kilo-tutorial), practi
 cargo run
 ```
 
+View README.md
+```
+cargo run - README.md
+```
+

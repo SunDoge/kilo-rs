@@ -147,26 +147,24 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
                     self.buffer.push('~');
                 }
             } else {
-                // let mut len = self.config.rows[filerow as usize].chars.len() as isize
-                //     - self.config.coloff as isize;
-                // if len < 0 {
-                //     len = 0;
-                // }
+                let mut len = self.config.rows[filerow as usize].chars.len() as isize
+                    - self.config.coloff as isize;
+                if len < 0 {
+                    len = 0;
+                }
 
-                // if len > self.config.screencols as isize {
-                //     len = self.config.screencols as isize;
-                // }
+                if len > self.config.screencols as isize {
+                    len = self.config.screencols as isize;
+                }
 
-                // let coloff = self.config.coloff as usize;
-                // self.buffer.push_str(
-                //     std::str::from_utf8(
-                //         &self.config.rows[filerow as usize].render.as_bytes()
-                //             [coloff..coloff + len as usize],
-                //     )
-                //     .unwrap(),
-                // )
-                self.buffer
-                    .push_str(&self.config.rows[filerow as usize].render)
+                let coloff = self.config.coloff as usize;
+                self.buffer.push_str(
+                    std::str::from_utf8(
+                        &self.config.rows[filerow as usize].render.as_bytes()
+                            [coloff..coloff + len as usize],
+                    )
+                    .unwrap(),
+                );
             }
 
             self.buffer.push_str(&format!("{}", clear::UntilNewline));
