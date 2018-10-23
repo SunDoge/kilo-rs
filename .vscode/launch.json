@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Debug",
             "program": "${workspaceFolder}/target/debug/kilo-rs",
-            "args": [],
+            "args": ["${workspaceFolder}/src/main.rs"],
             "cwd": "${workspaceFolder}",
             "terminal": "external"
         }

@@ -8,7 +8,7 @@ use termion::screen::AlternateScreen;
 use termion::{clear, cursor, terminal_size};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-const KILO_TAB_STOP: u16 = 8;
+const KILO_TAB_STOP: usize = 8;
 
 struct Row {
     chars: Vec<char>,
@@ -25,13 +25,13 @@ impl Row {
 }
 
 struct Config {
-    cx: u16,
-    cy: u16,
-    rx: u16,
-    rowoff: u16,
-    coloff: u16,
-    screencols: u16,
-    screenrows: u16,
+    cx: usize,
+    cy: usize,
+    rx: usize,
+    rowoff: usize,
+    coloff: usize,
+    screencols: usize,
+    screenrows: usize,
     rows: Vec<Row>,
 }
 
@@ -45,8 +45,8 @@ impl Config {
             rx: 0,
             rowoff: 0,
             coloff: 0,
-            screencols: w,
-            screenrows: h,
+            screencols: w as usize,
+            screenrows: h as usize,
             rows: Vec::new(),
         }
     }
@@ -71,14 +71,16 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
     }
 
     pub fn refresh_screen(&mut self) {
+        self.scroll();
+
         self.buffer
             .push_str(&format!("{}{}", cursor::Hide, cursor::Goto::default()));
         self.draw_rows();
         self.buffer.push_str(&format!(
             "{}{}",
             cursor::Goto(
-                self.config.cx - self.config.coloff + 1,
-                self.config.cy - self.config.rowoff + 1
+                (self.config.rx - self.config.coloff + 1) as u16,
+                (self.config.cy - self.config.rowoff + 1) as u16
             ),
             cursor::Show
         ));
@@ -98,7 +100,14 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
                 }
                 _ => {}
             },
+            Key::Home => self.config.cx = 0,
+            Key::End => {
+                if self.config.cy < self.config.rows.len() {
+                    self.config.cx = self.config.rows[self.config.cy].chars.len();
+                }
+            }
             Key::Up | Key::Down | Key::Left | Key::Right => self.move_cursor(c),
+            Key::PageUp | Key::PageDown => {}
             _ => {}
         }
 
@@ -124,11 +133,11 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
         for y in 0..self.config.screenrows {
             let filerow = y + self.config.rowoff;
 
-            if filerow as usize >= self.config.rows.len() {
+            if filerow >= self.config.rows.len() {
                 if self.config.rows.len() == 0 && y == self.config.screenrows / 3 {
                     let welcome = format!("Kilo editor -- version {}", VERSION);
 
-                    let mut welcomelen = welcome.len() as u16;
+                    let mut welcomelen = welcome.len();
 
                     if welcomelen > self.config.screencols {
                         welcomelen = self.config.screencols;
@@ -141,14 +150,14 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
                         padding -= 1;
                     }
 
-                    self.buffer.push_str(&" ".repeat(padding as usize));
+                    self.buffer.push_str(&" ".repeat(padding));
                     self.buffer.push_str(&welcome);
                 } else {
                     self.buffer.push('~');
                 }
             } else {
-                let mut len = self.config.rows[filerow as usize].chars.len() as isize
-                    - self.config.coloff as isize;
+                let mut len =
+                    self.config.rows[filerow].chars.len() as isize - self.config.coloff as isize;
                 if len < 0 {
                     len = 0;
                 }
@@ -157,11 +166,10 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
                     len = self.config.screencols as isize;
                 }
 
-                let coloff = self.config.coloff as usize;
+                let coloff = self.config.coloff;
                 self.buffer.push_str(
                     std::str::from_utf8(
-                        &self.config.rows[filerow as usize].render.as_bytes()
-                            [coloff..coloff + len as usize],
+                        &self.config.rows[filerow].render.as_bytes()[coloff..coloff + len as usize],
                     )
                     .unwrap(),
                 );
@@ -175,15 +183,29 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
     }
 
     fn move_cursor(&mut self, key: Key) {
+        let row = if self.config.cy >= self.config.rows.len() {
+            None
+        } else {
+            Some(&self.config.rows[self.config.cy])
+        };
+
         match key {
             Key::Left => {
                 if self.config.cx != 0 {
                     self.config.cx -= 1;
+                } else if self.config.cy > 0 {
+                    self.config.cy -= 1;
+                    self.config.cx = self.config.rows[self.config.cy].chars.len();
                 }
             }
             Key::Right => {
-                if self.config.cx != self.config.screencols - 1 {
-                    self.config.cx += 1;
+                if let Some(row) = row {
+                    if self.config.cx < row.chars.len() {
+                        self.config.cx += 1;
+                    } else if self.config.cx == row.chars.len() {
+                        self.config.cy += 1;
+                        self.config.cx = 0;
+                    }
                 }
             }
             Key::Up => {
@@ -192,7 +214,7 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
                 }
             }
             Key::Down => {
-                if self.config.cy != self.config.screenrows - 1 {
+                if self.config.cy < self.config.rows.len() {
                     self.config.cy += 1;
                 }
             }
@@ -200,10 +222,10 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
         }
     }
 
-    fn row_cx_to_rx(&self) -> u16 {
+    fn row_cx_to_rx(&self) -> usize {
         let mut rx = 0;
         for j in 0..self.config.cx {
-            if self.config.rows[self.config.cy as usize].chars[j as usize] == '\t' {
+            if self.config.rows[self.config.cy].chars[j] == '\t' {
                 rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
             }
             rx += 1;
@@ -218,7 +240,7 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
 
         for &c in &row.chars {
             if c == '\t' {
-                row.render.push_str(&" ".repeat(KILO_TAB_STOP as usize));
+                row.render.push_str(&" ".repeat(KILO_TAB_STOP));
             } else {
                 row.render.push(c);
             }
@@ -228,6 +250,30 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
     fn append_row(&mut self, s: String) {
         self.config.rows.push(Row::new(s));
         self.update_row();
+    }
+
+    fn scroll(&mut self) {
+        self.config.rx = 0;
+
+        if self.config.cy < self.config.rows.len() {
+            self.config.rx = self.row_cx_to_rx();
+        }
+
+        if self.config.cy < self.config.rowoff {
+            self.config.rowoff = self.config.cy;
+        }
+
+        if self.config.cy > self.config.rowoff + self.config.screenrows {
+            self.config.rowoff = self.config.cy - self.config.screenrows + 1;
+        }
+
+        if self.config.rx < self.config.coloff {
+            self.config.coloff = self.config.rx;
+        }
+
+        if self.config.rx >= self.config.coloff + self.config.screencols {
+            self.config.coloff = self.config.rx - self.config.screencols + 1;
+        }
     }
 }
 
