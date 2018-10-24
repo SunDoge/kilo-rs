@@ -183,7 +183,7 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
     }
 
     fn move_cursor(&mut self, key: Key) {
-        let row = if self.config.cy >= self.config.rows.len() {
+        let mut row = if self.config.cy >= self.config.rows.len() {
             None
         } else {
             Some(&self.config.rows[self.config.cy])
@@ -219,6 +219,22 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
                 }
             }
             _ => {}
+        }
+
+        row = if self.config.cy >= self.config.rows.len() {
+            None
+        } else {
+            Some(&self.config.rows[self.config.cy])
+        };
+
+        let rowlen = if let Some(row) = row {
+            row.chars.len()
+        } else {
+            0
+        };
+
+        if self.config.cx > rowlen {
+            self.config.cx = rowlen;
         }
     }
 
@@ -263,7 +279,7 @@ impl<R: Iterator<Item = Result<Key, std::io::Error>>, W: Write> Editor<R, W> {
             self.config.rowoff = self.config.cy;
         }
 
-        if self.config.cy > self.config.rowoff + self.config.screenrows {
+        if self.config.cy >= self.config.rowoff + self.config.screenrows {
             self.config.rowoff = self.config.cy - self.config.screenrows + 1;
         }
 
